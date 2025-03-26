@@ -85,10 +85,26 @@ def perdiction(Z):
         else:
             Z[0][i] = 0
     return Z
-def model(X, Y, learning_rate = 0.010):
-    W = HE_initialize(np.array([[3, 12288], [7, 3],[4, 7], [1, 4]]))
-    B = initialize_zero(np.array([[3, 12288], [7, 3], [4, 7], [1, 4]]))
-    for i in range(20000):
+def get_layer():
+    Layers = int(input("input number of layers: "))
+    neurons = []
+    for i in range(Layers):
+        neurons.append(int(input("input nerouns for " + str(i+1) + "th layer: ")))
+    dim = []
+    for i in range(Layers):
+        if i == 0:
+            dim.append([neurons[0], 12288])
+        else:
+            dim.append([neurons[i], neurons[i-1]])
+        if i == (Layers - 1):
+            dim.append([1, neurons[i]])
+    dim = np.array(dim)
+    return Layers, dim
+def model(X, Y, learning_rate = 0.01):
+    Layers, dim = get_layer()
+    W = HE_initialize(dim)
+    B = initialize_zero(dim)
+    for i in range(5001):
         A = forward_propagation(W, X, B)
         dW, dB = backward_propagation(W, B, A, Y)
         W -= dW * learning_rate
@@ -101,8 +117,9 @@ def model(X, Y, learning_rate = 0.010):
     for i in range(Y.shape[1]):
         if y[0][i] == Y[0][i]:
             count += 1
-    print(count/Y.shape[1] * 100)
-    return W, B
+    accuricy = count/ Y.shape[1] * 100
+    print(accuricy)
+    return W, B, accuricy
 def test_deep(Y, X, W, B):
     count = 0
     A = forward_propagation(W, X, B)
@@ -110,6 +127,8 @@ def test_deep(Y, X, W, B):
     for i in range(Y.shape[1]):
         if Z[0][i] == Y[0][i]:
             count += 1
-    print(count/Y.shape[1] * 100)
-W, B = model(train_set_x, train_set_y)
-test_deep(test_set_y, test_set_x, W, B)
+    accuricy = count/Y.shape[1] * 100
+    print(accuricy)
+    return accuricy
+W, B, acc_train = model(train_set_x, train_set_y)
+acc_test = test_deep(test_set_y, test_set_x, W, B)
