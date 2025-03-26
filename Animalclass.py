@@ -1,13 +1,14 @@
 import numpy as np
 from lr_utils import load_dataset
 import h5py
-
+import time
 train_set_x_orig, train_set_y, test_set_x_orig, test_set_y, classes = load_dataset()
 print(train_set_x_orig.shape, train_set_y.shape, test_set_x_orig.shape, test_set_y.shape)
 train_set_x_flatten = train_set_x_orig.reshape(train_set_x_orig.shape[0], -1).T
 test_set_x_flatten = test_set_x_orig.reshape(test_set_x_orig.shape[0], -1).T
 train_set_x = train_set_x_flatten/255.
 test_set_x = test_set_x_flatten/255.
+print(train_set_x.shape)
 def sigmoid(z):
     a = 1/ (1+ np.exp(-z))
     return a
@@ -17,39 +18,65 @@ def RELU(z):
 def tanh(z):
     a = np.tanh(z)
     return a
-def initialize_zero(dim, nodes, parameter):
-    if parameter == "w":
-        w = np.zeros([dim, nodes])
-        return w
-    b = np.zeros([nodes, dim])
-    return b
-def initialize_random(dim, nodes):
-    w = np.random.rand(dim,nodes) * 0.00001
-    print(w.shape)
-    return w
-def HE_initialize(dim, nodes):
-    w = np.random.rand(dim, nodes) * np.sqrt(10/dim)
-    return w
-def forward_propagation(w1, w2, b1, b2, X):
-    A1 = tanh(np.dot(w1.T, X) + b1)
-    #print(A1, "\n\n")
-    A2 = sigmoid(np.dot(w2.T, A1) + b2)
-    #print(A2)
-    return A2, A1
-def backward_propagation(A2, A1, Y, X, W2):
+def initialize_zero(dimensions):
+    layers = dimensions.shape[0]
+    B = np.empty((layers, 1), dtype=object)
+
+    for l in range(layers):
+        b = np.zeros((dimensions[l][0], 1))
+        B[l, 0] = b
+    return B
+def initialize_random(dimensions):
+    layers = dimensions.shape[0]
+    W = np.empty((layers, 1), dtype=object)
+    for l in range(layers):
+        w = np.random.rand(dimensions[l][1], dimensions[l][0])
+        W[l,0] = w
+    return W
+def HE_initialize(dimensions):
+    layers = dimensions.shape[0]
+    W = np.empty((layers, 1), dtype=object)
+    for l in range(layers):
+        #print(dimensions[l][1])
+        w = np.random.rand(dimensions[l][1], dimensions[l][0])* np.sqrt(2 /dimensions[l][1])
+        W[l,0] = w
+    return W
+def forward_propagation(W, X, B):
+    layers = W.shape[0]
+    A = np.empty((layers+ 1, 1), dtype=object)
+    A[0][0] = X
+    for l in range(layers):
+        z = np.dot(W[l][0].T, A[l][0]) + B[l][0]
+        if l != layers-1:
+            a = RELU(z)
+        else:
+            a = sigmoid(z)
+        A[l+1,0] = a
+    return A
+def backward_propagation(W, B, A, Y):
     m = Y.shape[1]
-    dZ2 = A2 - Y
-    dW2 = (1/m) * np.dot(A1, dZ2.T)  # Shape (4, 1)
-    db2 = (1/m) * np.sum(dZ2, axis=1, keepdims=True) 
-    dZ1 = np.dot(W2, dZ2) * (1 - A1**2)
-    dW1 = (1/m) * np.dot(X, dZ1.T)  # Shape (12288, 4)
-    db1 = (1/m) * np.sum(dZ1, axis=1, keepdims=True)  # Shape (4, 1)
-    return dW1, db1, dW2, db2
-    
+    L = W.shape[0] 
+    dW = np.empty_like(W)
+    dB = np.empty_like(B)
+    dZ = None
+
+    A_final = A[L, 0]  # A[4]
+    dZ = A_final - Y  # sigmoid derivative for BCE
+    dW[L-1, 0] = np.dot(A[L-1, 0], dZ.T) / m  # A3 * dZ4.T
+    dB[L-1, 0] = np.sum(dZ, axis=1, keepdims=True) / m
+
+    for l in reversed(range(L - 1)):
+        Z = np.dot(W[l, 0].T, A[l, 0]) + B[l, 0]  # recompute Z[l+1]
+        dA = np.dot(W[l + 1, 0], dZ)  # backprop through W
+        dZ = dA * (Z > 0)  # ReLU derivative
+
+        dW[l, 0] = np.dot(A[l, 0], dZ.T) / m
+        dB[l, 0] = np.sum(dZ, axis=1, keepdims=True) / m
+
+    return dW, dB
 def calculate_cost(Y, A):
     m = Y.shape[1]
-    epsilon = 1e-8  # Small constant to avoid log(0)
-    cost = -1 / m * np.sum(Y * np.log(A + epsilon) + (1 - Y) * np.log(1 - A + epsilon))
+    cost = -1 / m * np.sum(Y * np.log(A) + (1 - Y) * np.log(1 - A))
     return cost
 def perdiction(Z):
     for i in range(Z.shape[1]):
@@ -58,39 +85,31 @@ def perdiction(Z):
         else:
             Z[0][i] = 0
     return Z
-def model(X, Y, learning_rate = 0.1):
-    w1 = HE_initialize(X.shape[0], 4)
-    b1 = initialize_zero(1,4,"b")
-    w2 = HE_initialize(4,1)
-    b2 = initialize_zero(1,1,"b")
-    for i in range(14000):
-        A2, A1 = forward_propagation(w1, w2, b1, b2, X)
-        #print(A)
-        dw1, dw2, db1, db2 = backward_propagation(A2, A1, Y, X, w2)
-        #print("dw1 = ", dw1,"\ndw2 = ", dw2,"\ndb1 = ", db1,"\ndb2 = ", db2)
-        w1 -= learning_rate * dw1
-        b1 -= learning_rate * db1
-        w2 -= learning_rate * dw2
-        b2 -= learning_rate * db2
-        if i % 1000 == 0:
-            print(calculate_cost(Y, A2))
+def model(X, Y, learning_rate = 0.010):
+    W = HE_initialize(np.array([[3, 12288], [7, 3],[4, 7], [1, 4]]))
+    B = initialize_zero(np.array([[3, 12288], [7, 3], [4, 7], [1, 4]]))
+    for i in range(20000):
+        A = forward_propagation(W, X, B)
+        dW, dB = backward_propagation(W, B, A, Y)
+        W -= dW * learning_rate
+        B -= dB * learning_rate
+        if i%1000 ==0:
+            print(calculate_cost(Y, A[-1][0]))
+    A = forward_propagation(W, X, B)
     count = 0
-    A2, A1 = forward_propagation(w1, w2, b1, b2, X)
-    for i in range(Y.shape[1]):    
-        A2 = perdiction(A2)
-        if A2[0][i] == Y[0][i]:
+    y = perdiction(A[-1][0])
+    for i in range(Y.shape[1]):
+        if y[0][i] == Y[0][i]:
             count += 1
     print(count/Y.shape[1] * 100)
-    return w1, w2, b1, b2
-def test_deep(Y, X, w1, w2, b1, b2):
+    return W, B
+def test_deep(Y, X, W, B):
     count = 0
-    Z, A1 = forward_propagation(w1, w2, b1, b2, X)
+    A = forward_propagation(W, X, B)
+    Z = perdiction(A[-1][0])
     for i in range(Y.shape[1]):
-        Z = perdiction(Z)
         if Z[0][i] == Y[0][i]:
             count += 1
     print(count/Y.shape[1] * 100)
-
-
-w1, w2, b1, b2 = model(train_set_x, train_set_y)
-test_deep(test_set_y, test_set_x, w1, w2, b1, b2)
+W, B = model(train_set_x, train_set_y)
+test_deep(test_set_y, test_set_x, W, B)
