@@ -4,14 +4,40 @@ from lr_utils import load_dataset
 import h5py
 import time
 
+def shuffle_data(X, Y):
+    m = X.shape[1]
+    permutation = np.random.permutation(m)
+    X_shuffled = X[:, permutation]
+    Y_shuffled = Y[:, permutation]
+    return X_shuffled, Y_shuffled
+
+def create_mini_batches(X, batch_size=64):
+    m = X.shape[1]
+    mini_batches = []
+    num_full_batches = m // batch_size
+
+    for k in range(num_full_batches):
+        mini_batch = X[:, k * batch_size : (k + 1) * batch_size]
+        mini_batches.append(mini_batch)
+
+    if m % batch_size != 0:
+        mini_batch = X[:, num_full_batches * batch_size :]
+        mini_batches.append(mini_batch)
+
+    return mini_batches
+
 
 train_set_x_orig, train_set_y, test_set_x_orig, test_set_y, classes = load_dataset()
-print(train_set_x_orig.shape, train_set_y.shape, test_set_x_orig.shape, test_set_y.shape)
-train_set_x_flatten = train_set_x_orig.reshape(train_set_x_orig.shape[0], -1).T
-test_set_x_flatten = test_set_x_orig.reshape(test_set_x_orig.shape[0], -1).T
-train_set_x = train_set_x_flatten/255.
-test_set_x = test_set_x_flatten/255.
-print(train_set_x.shape)
+train_set_x = train_set_x_orig.reshape(train_set_x_orig.shape[0], -1).T
+test_set_x = test_set_x_orig.reshape(test_set_x_orig.shape[0], -1).T
+train_set_x = train_set_x/255.
+test_set_x = test_set_x/255.
+train_set_x_shuffled, train_set_y_shuffeled = shuffle_data(train_set_x, train_set_y)
+print(train_set_x_shuffled.shape)
+train_x_mini = create_mini_batches(train_set_x_shuffled)
+train_y_mini = create_mini_batches(train_set_y_shuffeled)
+print(train_x_mini[0].shape)
+#print(train_x_mini[0][0])
 
 def sigmoid(z):
     a = 1/ (1+ np.exp(-z))
@@ -131,41 +157,37 @@ def get_layer():
     use_L2 = int(input("do you want to use L2 initialization: "))
     return Layers, dim, use_L2
 
-def model(X, Y, learning_rate = 0.005, num_itiration = 10001):
+def model(X_mini, Y_mini, X, Y, learning_rate = 0.005, num_itiration = 501):
     Layers, dim, use_L2 = get_layer()
     cost = []
     W = HE_initialize(dim)
     B = initialize_zero(dim)
     for i in range(num_itiration):
-        A = forward_propagation(W, X, B)
-        dW, dB = backward_propagation(W, B, A, Y, use_L2, 0.5)
-        W -= dW * learning_rate
-        B -= dB * learning_rate
-        cost.append(calculate_cost(Y, A[-1][0], use_L2, 0.5))
-        if i%1000 ==0:
-            print(cost[i])
-    plt.plot(range(num_itiration), cost) 
+        for j in range(len(X_mini)):
+            A = forward_propagation(W, X_mini[j], B)
+            dW, dB = backward_propagation(W, B, A, Y_mini[j], use_L2)
+            W -= dW * learning_rate
+            B -= dB * learning_rate
+        if i >= 50:
+            A = forward_propagation(W, X, B)
+            cost.append(calculate_cost(Y, A[-1][0], use_L2))
+            if i%1000 ==0 or i == num_itiration - 1:
+                print(cost[i -50])
+    plt.plot(range(num_itiration- 50), cost) 
     plt.show()
     return W, B
 
-def test_deep(Y_test, X_test, Y_train, X_train, W, B):
+def test_deep(X, Y, W, B):
     count = 0
-    A = forward_propagation(W, X_test, B)
+    A = forward_propagation(W, X, B)
     Z = perdiction(A[-1][0])
-    for i in range(Y_test.shape[1]):
-        if Z[0][i] == Y_test[0][i]:
+    for i in range(Y.shape[1]):
+        if Z[0][i] == Y[0][i]:
             count += 1
-    accuricy_test = count/Y_test.shape[1] * 100
-    A = forward_propagation(W, X_train, B)
-    count = 0
-    y = perdiction(A[-1][0])
-    for i in range(Y_train.shape[1]):
-        if y[0][i] == Y_train[0][i]:
-            count += 1
-    accuricy_train = count/ Y_train.shape[1] * 100
-    print(accuricy_test)
-    print(accuricy_train)
-    return accuricy_test, accuricy_train
+    accuricy = count/Y.shape[1] * 100
+    return accuricy
 
-W, B = model(train_set_x, train_set_y)
-acc_test, acc_train = test_deep(test_set_y, test_set_x, train_set_y, train_set_x, W, B)
+W, B = model(train_x_mini, train_y_mini, train_set_x_shuffled, train_set_y_shuffeled)
+acc_test = test_deep(test_set_x, test_set_y, W, B)
+acc_train = test_deep(train_set_x, train_set_y, W, B)
+print(acc_train, "\n", acc_test)
